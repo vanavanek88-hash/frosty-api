@@ -19,7 +19,7 @@ PORT = int(os.environ.get("PORT", 8080))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
 # 👇 ТВОЙ DISCORD ID (узнай у @userinfobot). Только ты сможешь выдавать премиум.
-ADMIN_DISCORD_ID = 123456789012345678 # <-- ЗАМЕНИ НА СВОЙ ID
+ADMIN_DISCORD_ID = 701730050172518420 # <-- ЗАМЕНИ НА СВОЙ ID
 
 # Хранилище (в памяти)
 lock = threading.Lock()
