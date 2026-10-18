@@ -18,8 +18,8 @@ CODE_TTL = 300
 PORT = int(os.environ.get("PORT", 8080))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
-# 👇 ТВОЙ DISCORD ID (узнай у @userinfobot). Только ты сможешь выдавать премиум.
-ADMIN_DISCORD_ID = 123456789012345678 # <-- ЗАМЕНИ НА СВОЙ ID
+# 👇 ТВОЙ DISCORD ID (теперь твой настоящий)
+ADMIN_DISCORD_ID = 701730050172518420
 
 # Хранилище (в памяти)
 lock = threading.Lock()
@@ -52,10 +52,7 @@ def status():
     with lock:
         until = premium_until.get(uid, 0)
         link = links.get(uid)
-        # ТЕСТ: если у игрока нет премиума, выдать на 30 дней (убери это, когда сделаешь нормальную оплату)
-        if until <= now:
-            until = now + 30 * 86400
-            premium_until[uid] = until
+        # ВАЖНО: Здесь больше нет авто-выдачи! Теперь только реальный премиум.
             
     is_premium = until > now
     return jsonify(
@@ -101,6 +98,34 @@ def unlink():
         for c in [c for c, d in codes.items() if d["userId"] == uid]: del codes[c]
     return jsonify(ok=True)
 
+# 🔥 НОВОЕ: Активация ключа прямо из игры
+@app.post("/premium/activate")
+def activate_premium():
+    data = request.get_json(silent=True) or {}
+    uid = parse_uid(data.get("userId"))
+    key = str(data.get("key") or "").strip().upper()
+    
+    if uid is None: return jsonify(error="bad userId"), 400
+    if not key: return jsonify(error="bad key"), 400
+    
+    now = int(time.time())
+    with lock:
+        key_data = premium_keys.get(key)
+        if not key_data:
+            return jsonify(error="Ключ не найден"), 404
+        if key_data["used"]:
+            return jsonify(error="Ключ уже использован"), 400
+            
+        # Активируем
+        key_data["used"] = True
+        days = key_data["days"]
+        current_until = premium_until.get(uid, 0)
+        base_time = max(now, current_until)
+        new_until = base_time + (days * 86400)
+        premium_until[uid] = new_until
+        
+    return jsonify(ok=True, days=days, premiumUntil=new_until)
+
 # ============================================================
 # DISCORD-БОТ
 # ============================================================
@@ -117,7 +142,8 @@ async def help_command(ctx):
     help_text = (
         "**❄️ Frosty Hub — Помощь**\n\n"
         "**Для игроков:**\n"
-        "`!link <код>` — Привязать Discord к аккаунту Roblox. Код показывается в игре в меню скрипта.\n\n"
+        "`!link <код>` — Привязать Discord к аккаунту Roblox. Код показывается в игре в меню скрипта.\n"
+        "`!activatekeyp <RobloxUserId> <ключ>` — Активировать ключ Premium для игрока.\n\n"
         "**Для администраторов:**\n"
         "`!premium <RobloxUserId> <дней>` — Выдать Premium подписку игроку (по умолчанию 30 дней).\n"
         "`!genkey <дней>` — Сгенерировать ключ активации Premium (по умолчанию 30 дней).\n\n"
@@ -141,6 +167,34 @@ async def link_command(ctx, code: str = None):
         entry["discordName"] = str(ctx.author.name)
         links[entry["userId"]] = {"discordId": str(ctx.author.id), "discordName": str(ctx.author.name)}
     await ctx.send("✅ Аккаунт успешно привязан к Frosty Hub!")
+
+# 🔥 НОВОЕ: Активация ключа через Discord
+@bot.command(name="activatekeyp")
+async def activate_key_command(ctx, roblox_id: int = None, key: str = None):
+    if ctx.author.id != ADMIN_DISCORD_ID:
+        return await ctx.send("❌ У тебя нет прав на использование этой команды.")
+    if not roblox_id or not key:
+        return await ctx.send("Использование: `!activatekeyp <RobloxUserId> <ключ>`")
+    
+    key = key.strip().upper()
+    now = int(time.time())
+    
+    with lock:
+        key_data = premium_keys.get(key)
+        if not key_data:
+            return await ctx.send("❌ Ключ не найден.")
+        if key_data["used"]:
+            return await ctx.send("⚠️ Ключ уже использован.")
+            
+        key_data["used"] = True
+        days = key_data["days"]
+        current_until = premium_until.get(roblox_id, 0)
+        base_time = max(now, current_until)
+        new_until = base_time + (days * 86400)
+        premium_until[roblox_id] = new_until
+        
+    date_str = datetime.fromtimestamp(new_until).strftime('%d.%m.%Y %H:%M')
+    await ctx.send(f"✅ Ключ `{key}` активирован для игрока `{roblox_id}`!\nВыдано дней: {days}\nДействует до: {date_str}")
 
 @bot.command(name="premium")
 async def premium_command(ctx, roblox_id: int = None, days: int = 30):
@@ -168,7 +222,7 @@ async def genkey_command(ctx, days: int = 30):
     with lock:
         premium_keys[key] = {"days": days, "used": False}
     
-    await ctx.send(f"🔑 Твой ключ на **{days}** дней:\n`{key}`\nВведи его в игре в меню Premium.")
+    await ctx.send(f"🔑 Твой ключ на **{days}** дней:\n`{key}`\nАктивируй его командой `!activatekeyp <RobloxUserId> {key}` или введи в игре.")
 
 def run_bot():
     if not BOT_TOKEN:
