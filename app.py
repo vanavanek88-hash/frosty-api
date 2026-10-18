@@ -4,7 +4,7 @@ import secrets
 import string
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import discord
 from discord.ext import commands
@@ -19,7 +19,7 @@ PORT = int(os.environ.get("PORT", 8080))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
 # 👇 ТВОЙ DISCORD ID (узнай у @userinfobot). Только ты сможешь выдавать премиум.
-ADMIN_DISCORD_ID = 701730050172518420 # <-- ЗАМЕНИ НА СВОЙ ID
+ADMIN_DISCORD_ID = 123456789012345678 # <-- ЗАМЕНИ НА СВОЙ ID
 
 # Хранилище (в памяти)
 lock = threading.Lock()
@@ -52,6 +52,11 @@ def status():
     with lock:
         until = premium_until.get(uid, 0)
         link = links.get(uid)
+        # ТЕСТ: если у игрока нет премиума, выдать на 30 дней (убери это, когда сделаешь нормальную оплату)
+        if until <= now:
+            until = now + 30 * 86400
+            premium_until[uid] = until
+            
     is_premium = until > now
     return jsonify(
         linked=link is not None,
@@ -107,6 +112,19 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 async def on_ready():
     print(f"[bot] вошёл как {bot.user} (id={bot.user.id})")
 
+@bot.command(name="help")
+async def help_command(ctx):
+    help_text = (
+        "**❄️ Frosty Hub — Помощь**\n\n"
+        "**Для игроков:**\n"
+        "`!link <код>` — Привязать Discord к аккаунту Roblox. Код показывается в игре в меню скрипта.\n\n"
+        "**Для администраторов:**\n"
+        "`!premium <RobloxUserId> <дней>` — Выдать Premium подписку игроку (по умолчанию 30 дней).\n"
+        "`!genkey <дней>` — Сгенерировать ключ активации Premium (по умолчанию 30 дней).\n\n"
+        "*Если ты видишь эту команду, значит бот работает корректно.*"
+    )
+    await ctx.send(help_text)
+
 @bot.command(name="link")
 async def link_command(ctx, code: str = None):
     if not code: return await ctx.send("Использование: `!link КОД`")
@@ -124,7 +142,6 @@ async def link_command(ctx, code: str = None):
         links[entry["userId"]] = {"discordId": str(ctx.author.id), "discordName": str(ctx.author.name)}
     await ctx.send("✅ Аккаунт успешно привязан к Frosty Hub!")
 
-# 🔥 НОВОЕ: Админ-команда для выдачи премиума
 @bot.command(name="premium")
 async def premium_command(ctx, roblox_id: int = None, days: int = 30):
     if ctx.author.id != ADMIN_DISCORD_ID:
@@ -134,7 +151,6 @@ async def premium_command(ctx, roblox_id: int = None, days: int = 30):
     
     now = int(time.time())
     with lock:
-        # Если у игрока уже есть премиум, добавляем дни к текущей дате
         current_until = premium_until.get(roblox_id, 0)
         base_time = max(now, current_until)
         new_until = base_time + (days * 86400)
@@ -143,7 +159,6 @@ async def premium_command(ctx, roblox_id: int = None, days: int = 30):
     date_str = datetime.fromtimestamp(new_until).strftime('%d.%m.%Y %H:%M')
     await ctx.send(f"✅ Игроку с ID `{roblox_id}` выдан Premium на {days} дн. (до {date_str})")
 
-# 🔥 НОВОЕ: Генерация ключа на 30 дней (только для админа)
 @bot.command(name="genkey")
 async def genkey_command(ctx, days: int = 30):
     if ctx.author.id != ADMIN_DISCORD_ID:
@@ -156,7 +171,9 @@ async def genkey_command(ctx, days: int = 30):
     await ctx.send(f"🔑 Твой ключ на **{days}** дней:\n`{key}`\nВведи его в игре в меню Premium.")
 
 def run_bot():
-    if not BOT_TOKEN: return
+    if not BOT_TOKEN:
+        print("[bot] BOT_TOKEN не задан, бот не запущен (работает только API)")
+        return
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try: loop.run_until_complete(bot.start(BOT_TOKEN))
