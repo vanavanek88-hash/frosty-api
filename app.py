@@ -14,7 +14,7 @@ app = Flask(__name__)
 links = {}
 
 # СЕКРЕТНЫЙ ТОКЕН БОТА (ОБЯЗАТЕЛЬНО ЗАМЕНИ)
-BOT_TOKEN = "b440ec7a64fd30a0b7f1fd367b3c3344f15a91de67275b8918320cbb91d17d05"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # ==========================================
 # 1. API ДЛЯ ИГРЫ (Твой скрипт Frosty Hub)
