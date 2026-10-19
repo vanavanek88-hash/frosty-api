@@ -18,13 +18,15 @@ CODE_TTL = 300
 PORT = int(os.environ.get("PORT", 8080))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
-ADMIN_DISCORD_ID = 701730050172518420 # Твой ID
+# 👇 ТВОЙ DISCORD ID (узнай у @userinfobot)
+ADMIN_DISCORD_ID = 701730050172518420
 
+# Хранилище (в памяти)
 lock = threading.Lock()
-codes = {}
-links = {}
-premium_until = {}
-premium_keys = {}
+codes = {}           # code -> {userId, username, discordId, discordName, time}
+links = {}           # userId -> {discordId, discordName}
+premium_until = {}   # userId -> unix-время окончания подписки
+premium_keys = {}    # key -> {days, used: False}  (ключи активации)
 discord_avatars = {} # userId -> avatarUrl
 
 CODE_ALPHABET = string.ascii_uppercase + string.digits
@@ -38,7 +40,7 @@ def purge_expired_locked(now):
         del codes[c]
 
 # ============================================================
-# FLASK API
+# FLASK API (для игры)
 # ============================================================
 app = Flask(__name__)
 
@@ -87,6 +89,17 @@ def link_status():
         if entry["discordId"] is None: return jsonify(status="pending")
         return jsonify(status="linked", discordId=entry["discordId"], discordName=entry["discordName"])
 
+@app.post("/unlink")
+def unlink():
+    data = request.get_json(silent=True) or {}
+    uid = parse_uid(data.get("userId"))
+    if uid is None: return jsonify(error="bad userId"), 400
+    with lock:
+        links.pop(uid, None)
+        for c in [c for c, d in codes.items() if d["userId"] == uid]: del codes[c]
+    return jsonify(ok=True)
+
+# 🔥 Активация ключа прямо из игры
 @app.post("/premium/activate")
 def activate_premium():
     data = request.get_json(silent=True) or {}
